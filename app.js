@@ -97,3 +97,7 @@ app.get('/api/test', async (req, res) => {
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 }); 
+
+
+// http://localhost:3000/api/aqi/current?lat=12.9716&lon=77.5946
+// http://localhost:3000/api/spots?lat=12.9716&lon=77.5946&activity=jogging

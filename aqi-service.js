@@ -12,20 +12,26 @@ async function getWAQIData(lat, lon) {
         
         if (response.data.status === 'ok') {
             const data = response.data.data;
+            const iaqi = data.iaqi || {};
+            
             return {
                 aqi: data.aqi,
                 distance: data.city.distance || 0,
                 station: data.city.name,
-                timestamp: data.time.iso
+                timestamp: data.time.iso,
+                pollutants: {
+                    pm25: iaqi.pm25?.v || null,
+                    pm10: iaqi.pm10?.v || null,
+                    o3: iaqi.o3?.v || null,
+                    no2: iaqi.no2?.v || null,
+                    so2: iaqi.so2?.v || null,
+                    co: iaqi.co?.v || null
+                }
             };
         }
         return null;
     } catch (error) {
-        console.error('WAQI API Error:', {
-            message: error.message,
-            status: error.response?.status,
-            data: error.response?.data
-        });
+        console.error('WAQI API Error:', error);
         return null;
     }
 }
@@ -42,16 +48,20 @@ async function getIQAirData(lat, lon) {
                 aqi: data.current.pollution.aqius,
                 distance: 0,
                 station: `${data.city}, ${data.state}`,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                pollutants: {
+                    pm25: data.current.pollution.pm25 || null,
+                    pm10: data.current.pollution.pm10 || null,
+                    o3: data.current.pollution.o3 || null,
+                    no2: data.current.pollution.no2 || null,
+                    so2: data.current.pollution.so2 || null,
+                    co: data.current.pollution.co || null
+                }
             };
         }
         return null;
     } catch (error) {
-        console.error('IQAir API Error:', {
-            message: error.message,
-            status: error.response?.status,
-            data: error.response?.data
-        });
+        console.error('IQAir API Error:', error);
         return null;
     }
 }
@@ -83,20 +93,26 @@ function calculateWeightedAQI(sources) {
 
 async function getAQIWithConfidence(lat, lon) {
     try {
-        // Get data from both APIs
         const [waqiData, iqairData] = await Promise.allSettled([
             getWAQIData(lat, lon),
             getIQAirData(lat, lon)
         ]);
         
-        // Initialize response object
         const aqiInfo = {
             aqi: null,
             confidence: 'low',
             nearestStation: null,
             distance: null,
             recommendations: {},
-            sources: []
+            sources: [],
+            pollutants: {
+                pm25: null,
+                pm10: null,
+                o3: null,
+                no2: null,
+                so2: null,
+                co: null
+            }
         };
 
         // Add WAQI data if available
@@ -105,7 +121,15 @@ async function getAQIWithConfidence(lat, lon) {
                 name: 'WAQI',
                 aqi: waqiData.value.aqi,
                 distance: waqiData.value.distance,
-                station: waqiData.value.station
+                station: waqiData.value.station,
+                pollutants: waqiData.value.pollutants
+            });
+            
+            // Use WAQI pollutant data as primary source
+            Object.keys(aqiInfo.pollutants).forEach(pollutant => {
+                if (waqiData.value.pollutants[pollutant] !== null) {
+                    aqiInfo.pollutants[pollutant] = waqiData.value.pollutants[pollutant];
+                }
             });
         }
 
@@ -115,7 +139,16 @@ async function getAQIWithConfidence(lat, lon) {
                 name: 'IQAir',
                 aqi: iqairData.value.aqi,
                 distance: iqairData.value.distance,
-                station: iqairData.value.station
+                station: iqairData.value.station,
+                pollutants: iqairData.value.pollutants
+            });
+            
+            // Fill in any missing pollutant data from IQAir
+            Object.keys(aqiInfo.pollutants).forEach(pollutant => {
+                if (aqiInfo.pollutants[pollutant] === null && 
+                    iqairData.value.pollutants[pollutant] !== null) {
+                    aqiInfo.pollutants[pollutant] = iqairData.value.pollutants[pollutant];
+                }
             });
         }
 
